@@ -1,0 +1,20 @@
+# Copy to ~/.config/weather-card/config.toml; all intervals are minutes.
+location = "Saltwood, Kent"
+latitude = 51.080
+longitude = 1.085
+timezone = "Europe/London"
+layout = "automatic"
+output = "/home/pi4/FrameCards/weather.png"
+state_dir = "~/.local/state/weather-card"
+api_url = "http://localhost:9000/api/command"
+queue_enabled = true
+duration = 30
+refresh_minutes = 30
+queue_minutes = 60
+fresh_minutes = 60
+stale_minutes = 180
+expire_minutes = 720
+window_start = "07:00"
+window_end = "20:30"
+model = "ukmo_seamless"
+font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"

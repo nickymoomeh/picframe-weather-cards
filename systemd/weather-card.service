@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh and queue digital frame weather cards
+[Service]
+Type=oneshot
+ExecStart=%h/picframe-weather-cards/.venv/bin/weather-card --config %h/.config/weather-card/config.toml tick
+WorkingDirectory=%h/picframe-weather-cards
+EnvironmentFile=-%h/.config/weather-card/environment
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=%h/.local/state/weather-card /home/pi4/FrameCards
+UMask=0022
+TimeoutStartSec=90
