@@ -2,6 +2,7 @@ import fcntl
 import hashlib
 import logging
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import client
@@ -36,16 +37,37 @@ def generate(cfg, now, offline=False):
             LOG.warning("Using offline fallback: %s", exc)
     image = render(cfg, obj, now, failed)
     atomic(cfg.output, lambda f: image.save(f, format="PNG"))
+    # Keep failure state separate from the last validated forecast. Re-rendering
+    # cached data must neither erase an offline warning nor imply a new fetch.
+    save_json(cfg.state / "forecast-status.json", dict(offline=failed))
     return obj
 
 
-def queue(cfg, now):
+def render_cached(cfg, now):
+    """Publish with the queue-time clock and original forecast/failure state."""
+    obj = cached(cfg, now)
+    status = read_json(cfg.state / "forecast-status.json") or {}
+    offline = status.get("offline") is True
+    if "offline" not in status and obj is not None:
+        # Older installations only recorded scheduled attempts. An attempt newer
+        # than the validated cache indicates the last scheduled fetch failed.
+        last_attempt = (read_json(cfg.state / "schedule.json") or {}).get("refresh", 0)
+        offline = (
+            isinstance(last_attempt, (int, float)) and last_attempt > obj["retrieved"]
+        )
+    image = render(cfg, obj, now, offline=offline)
+    atomic(cfg.output, lambda f: image.save(f, format="PNG"))
+
+
+def queue(cfg, now, *, refresh_image=False):
     if not in_window(cfg, now):
         return False
     state = read_json(cfg.state / "queue.json") or {}
     # Persist before sending: ambiguous timeouts cannot cause repeated submissions.
     if 0 <= now.timestamp() - state.get("attempt", 0) < cfg.queue_minutes * 60:
         return False
+    if refresh_image:
+        render_cached(cfg, now)
     path = Path(cfg.output)
     if not path.is_file():
         LOG.warning("Generate an image before queueing")
@@ -94,4 +116,6 @@ def tick(cfg, now):
         generate(cfg, now)
         save_json(cfg.state / "schedule.json", dict(refresh=now.timestamp()))
     if cfg.queue_enabled:
-        queue(cfg, now)
+        # Read the clock after a potentially slow forecast request. Eligibility
+        # and the cached render use this same instant, including local DST rules.
+        queue(cfg, datetime.now(UTC), refresh_image=True)
