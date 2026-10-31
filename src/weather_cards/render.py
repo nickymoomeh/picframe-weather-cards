@@ -105,7 +105,23 @@ def icon(draw, x, y, s, kind, accent):
                 )
 
 
-def render(cfg, obj, now, offline=False, forced_theme=None):
+def forecast_time_label(timestamp, timezone):
+    """Only suffix an ambiguous autumn wall-clock hour; selection stays unchanged."""
+    local = datetime.fromtimestamp(timestamp, timezone)
+    wall = local.replace(tzinfo=None)
+    first, second = (
+        wall.replace(tzinfo=timezone, fold=0),
+        wall.replace(tzinfo=timezone, fold=1),
+    )
+    ambiguous = first.utcoffset() != second.utcoffset()
+    return local.strftime("%H:%M %Z" if ambiguous else "%H:%M")
+
+
+def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
+    """Render one complete card. Optional audit records actual ink/layout bounds.
+
+    The audit is used by visual geometry tests; it does not change saved images.
+    """
     tz = ZoneInfo(cfg.timezone)
     local = now.astimezone(tz)
     age = (now.timestamp() - obj["retrieved"]) / 60 if obj else float("inf")
@@ -150,10 +166,35 @@ def render(cfg, obj, now, offline=False, forced_theme=None):
         except OSError:
             return ImageFont.load_default(size=size)
 
-    def text(x, y, s, size=38, fill="white"):
-        d.text((x, y), s, font=font(size), fill=fill)
+    def text(
+        x, y, value, size=44, fill="white", *, width=1720, center=False, role="text"
+    ):
+        # Fit only exceptional long strings/custom fonts; core forecast sizes are
+        # fixed for normal supported values. Measure real ink, not nominal ems.
+        chosen = font(size)
+        while chosen.getbbox(value, anchor="lt")[2] > width and size > 20:
+            size -= 1
+            chosen = font(size)
+        box = chosen.getbbox(value, anchor="lt")
+        if center:
+            x -= (box[2] - box[0]) / 2
+        d.text((x, y), value, font=chosen, fill=fill, anchor="lt")
+        if audit is not None:
+            audit.append(
+                dict(
+                    role=role,
+                    text=value,
+                    size=size,
+                    box=(x + box[0], y + box[1], x + box[2], y + box[3]),
+                )
+            )
 
-    text(100, 66, cfg.location, 46)
+    def symbol(x, y, size, weather, role):
+        icon(d, x, y, size, weather, accent)
+        if audit is not None:
+            audit.append(dict(role=role, box=(x, y, x + size, y + size)))
+
+    text(100, 70, cfg.location, 48, width=1360, role="location")
     weekdays = (
         "Monday",
         "Tuesday",
@@ -179,27 +220,46 @@ def render(cfg, obj, now, offline=False, forced_theme=None):
     )
     text(
         100,
-        132,
+        137,
         f"{weekdays[local.weekday()]} {local.day} {months[local.month - 1]}",
-        30,
+        38,
         "#d9e4ed",
+        width=1360,
+        role="date",
     )
-    text(1560, 70, f"{local:%H:%M}", 54)
+    text(1540, 70, f"{local:%H:%M}", 66, width=250, role="clock")
     warn = offline or age > cfg.stale_minutes or not usable
     if warn:
-        d.ellipse((1818, 82, 1842, 106), fill="#ff525f")
+        d.ellipse((1812, 76, 1848, 112), fill="#ff525f")
+        if audit is not None:
+            audit.append(dict(role="offline-dot", box=(1812, 76, 1848, 112)))
     if not data:
-        icon(d, 1320, 270, 360, "overcast", accent)
-        text(100, 350, "Weather temporarily", 76)
-        text(100, 450, "unavailable", 92)
-        text(105, 620, "We’ll try again automatically.", 40, "#d9e4ed")
-        text(105, 700, "No recent forecast available.", 34, "#d9e4ed")
+        symbol(1360, 280, 360, "overcast", "unavailable-icon")
+        text(100, 350, "Weather temporarily", 80, width=1180)
+        text(100, 460, "unavailable", 96, width=1180)
+        text(105, 640, "We’ll try again automatically.", 48, width=1180)
+        text(105, 720, "No recent forecast available.", 44, "#d9e4ed", width=1180)
     else:
         mode = layout(cfg, data)
-        text(94, 218, f"{c['temperature_2m']:.0f}°", 235)
-        text(108, 495, CODES[c["weather_code"]], 56)
-        text(108, 575, f"Feels like {c['apparent_temperature']:.0f}°", 36, "#d9e4ed")
-        icon(d, 1270, 230, 390, kind, accent)
+        text(
+            94,
+            225,
+            f"{c['temperature_2m']:.0f}°",
+            235,
+            width=1100,
+            role="current-temperature",
+        )
+        text(108, 435, CODES[c["weather_code"]], 58, width=1110, role="condition")
+        text(
+            108,
+            515,
+            f"Feels like {c['apparent_temperature']:.0f}°",
+            44,
+            "#d9e4ed",
+            width=1110,
+            role="feels-like",
+        )
+        symbol(1300, 210, 350, kind, "current-icon")
         daily = data["daily"]
         idx = next(
             (
@@ -212,9 +272,11 @@ def render(cfg, obj, now, offline=False, forced_theme=None):
         if idx is not None:
             text(
                 108,
-                640,
+                580,
                 f"High {daily['temperature_2m_max'][idx]:.0f}°    Low {daily['temperature_2m_min'][idx]:.0f}°",
-                34,
+                44,
+                width=1110,
+                role="high-low",
             )
             events = sorted(
                 (t, k)
@@ -225,34 +287,107 @@ def render(cfg, obj, now, offline=False, forced_theme=None):
             if events:
                 t, label = events[0]
                 text(
-                    1270,
-                    655,
+                    1280,
+                    580,
                     f"{label.title()}  {datetime.fromtimestamp(t, tz):%H:%M}",
-                    34,
+                    44,
+                    width=540,
+                    role="solar",
                 )
         if mode == "detailed":
+            # Four useful metrics with room-sized values. Pressure remains in
+            # validated/cache data; omit it from the card to avoid a fifth column.
             items = [
                 ("WIND", f"{c['wind_speed_10m']:.0f} mph"),
                 ("GUSTS", f"{c['wind_gusts_10m']:.0f} mph"),
-                ("HUMIDITY", f"{c['relative_humidity_2m']:.0f}%"),
                 ("RAIN", f"{c['precipitation']:.1f} mm"),
-                ("PRESSURE", f"{c['pressure_msl']:.0f} hPa"),
+                ("HUMIDITY", f"{c['relative_humidity_2m']:.0f}%"),
             ]
             for i, (label, value) in enumerate(items):
-                text(110 + i * 350, 730, label, 22, "#c0d3e0")
-                text(110 + i * 350, 766, value, 34)
+                x = 110 + i * 435
+                text(x, 635, label, 36, "#d9e4ed", width=400, role="metric-label")
+                text(x, 682, value, 48, width=400, role="metric-value")
         ps = periods(data, now)
-        d.line((100, 850, 1820, 850), fill="#6e879c", width=1)
+        divider = 735 if mode == "detailed" else 665
+        d.line((100, divider, 1820, divider), fill="#6e879c", width=1)
         if not ps:
-            text(108, 925, "Future forecast not available in saved data", 38)
-        for i, p in enumerate(ps):
-            x = 110 + i * 435
-            t = datetime.fromtimestamp(p["time"], tz)
-            text(x, 880, f"{t:%H:%M %Z}", 30, "#c0d3e0")
-            icon(d, x, 940, 95, theme(p["weather_code"], p["is_day"]), accent)
-            text(x + 125, 930, f"{p['temperature_2m']:.0f}°", 60)
-            text(x, 1040, CODES[p["weather_code"]], 27)
-            text(x, 1082, f"Rain {p['precipitation_probability']:.0f}%", 27, "#c0d3e0")
+            text(
+                108,
+                850,
+                "Future forecast not available in saved data",
+                48,
+                role="forecast-unavailable",
+            )
+        for i, period in enumerate(ps):
+            center = 310 + i * 435
+            text(
+                center,
+                755 if mode == "detailed" else 700,
+                forecast_time_label(period["time"], tz),
+                72,
+                width=410,
+                center=True,
+                role=f"forecast-{i}-time",
+            )
+            icon_size = 160 if mode == "detailed" else 180
+            symbol(
+                center - icon_size / 2,
+                825 if mode == "detailed" else 800,
+                icon_size,
+                theme(period["weather_code"], period["is_day"]),
+                f"forecast-{i}-icon",
+            )
+            text(
+                center,
+                990,
+                f"{period['temperature_2m']:.0f}°",
+                112,
+                width=410,
+                center=True,
+                role=f"forecast-{i}-temperature",
+            )
+            # Wet hours warrant a large probability. Dry, low-risk hours need no
+            # repeated description/probability beneath an already clear icon.
+            if period["precipitation_probability"] >= 20 or period["weather_code"] in (
+                51,
+                53,
+                55,
+                56,
+                57,
+                61,
+                63,
+                65,
+                66,
+                67,
+                71,
+                73,
+                75,
+                77,
+                80,
+                81,
+                82,
+                85,
+                86,
+                95,
+                96,
+                99,
+            ):
+                probability_label = (
+                    "Precip"
+                    if period["weather_code"]
+                    in (56, 57, 66, 67, 71, 73, 75, 77, 85, 86)
+                    else "Rain"
+                )
+                text(
+                    center,
+                    1080,
+                    f"{probability_label} {period['precipitation_probability']:.0f}%",
+                    48,
+                    "#d9e4ed",
+                    width=410,
+                    center=True,
+                    role=f"forecast-{i}-precipitation",
+                )
     if obj:
         updated = datetime.fromtimestamp(obj["retrieved"], tz)
         prefix = (
@@ -267,6 +402,15 @@ def render(cfg, obj, now, offline=False, forced_theme=None):
         status = f"{prefix} {updated:%d %b %H:%M %Z}"
     else:
         status = "Offline — awaiting first forecast"
-    text(100, 1150, status, 23, "#d1dce6")
-    text(1270, 1150, "Open-Meteo / Met Office · CC BY-SA", 21, "#c0d3e0")
+    text(100, 1146, status, 44, "#e6edf3", width=1250, role="status")
+    text(
+        1420,
+        1142,
+        "Open-Meteo / Met Office",
+        22,
+        "#c0d3e0",
+        width=400,
+        role="attribution",
+    )
+    text(1420, 1172, "CC BY-SA", 20, "#c0d3e0", width=400, role="licence")
     return im

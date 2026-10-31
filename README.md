@@ -4,7 +4,31 @@ A standalone, headless Python service producing 1920 × 1200 weather cards for d
 
 ![Rain, minimal layout](gallery/rain-minimal.png)
 
-[All ten themes, both layouts](gallery/README.md) · [Contact sheet](gallery/contact-sheet.jpg)
+[Before / after comparisons](gallery/README.md) · [All-theme contact sheet](gallery/contact-sheet.jpg) · [14-inch / 10-foot assessment](gallery/viewing-distance.md)
+
+## Readable from the sofa
+
+The layouts now prioritise four future times, icons and temperatures on the 14-inch display. The main temperature stays at 235 px, while the forecast moves upwards into previously unused space. The palette, ten themes and automatic layout rules are unchanged.
+
+| Forecast element | Previous | Revised |
+| --- | --- | --- |
+| Time | 30 px | 72 px |
+| Temperature | 60 px | 112 px |
+| Icon box | 95 px | 180 px minimal / 160 px detailed |
+| Useful precipitation probability | 27 px | 48 px |
+| Offline / update message | 23 px | Up to 44 px, fitted for long messages |
+
+Repeated weather descriptions beneath the icons are removed. Precipitation probability (labelled Precip for frozen precipitation) appears at 20% or above, or for wet, snow or storm codes even at a lower probability. Detailed cards retain wind, gusts, rainfall and humidity with larger values; pressure remains in fetched/cached data but is omitted from the display. Times normally omit GMT/BST; ambiguous autumn hours include the timezone suffix even if only one of the repeated hours is selected.
+
+On a 14-inch 16:10 panel, DejaVu forecast time digits grow from approximately **3.5 mm to 8.5 mm** tall and forecast temperature glyphs from **7.1 mm to 13.2 mm**. The physical-size calculation supports a material improvement; comfortable reading at ten feet still needs a manual check on your frame. Secondary metrics and source attribution remain smaller than the main forecast. See the [viewing assessment](gallery/viewing-distance.md) for angular sizes and an equivalent-angle review method.
+
+![Minimal layout before and after](gallery/comparison-minimal.jpg)
+
+![Detailed layout before and after](gallery/comparison-detailed.jpg)
+
+All comparison data is simulated; the minimal example recreates Saltwood at 09:01 on Saturday 31 October with 10°C and clear sky. The old and new sides use identical data and font. The original renderer is frozen in `tools/baseline_render.py` solely to reproduce these comparisons. Production rendering uses `src/weather_cards/render.py`.
+
+This update changes presentation only: fetching, validation, cache/freshness policy, queue snapshots, scheduling, configuration and service definitions retain their existing behaviour.
 
 ## Install on Raspberry Pi OS Lite (Debian 13)
 
@@ -68,9 +92,9 @@ See the commented [sample TOML](config.example.toml). All keys are optional and 
 
 `generate` explicitly refreshes and publishes but does not queue. `--offline` reads cache without any network call. `queue` requests the existing image, respecting the time window and interval even when invoked manually. It exits 1 when skipped or unsuccessful; operational/configuration errors exit 2. `tick` is the scheduler entry point. Preview needs neither a configuration file nor network, never updates production cache, and writes to its explicitly requested output (default `preview.png`). Use preview output paths outside production names.
 
-Layout `automatic` chooses detailed when precipitation is greater than zero, gusts are at least 25 mph, or WMO weather code is 45 or greater; otherwise minimal. Explicit minimal/detailed overrides this rule. Detailed includes humidity, rainfall, wind, gusts and sea-level pressure. Main temperature and feels-like use Celsius, precipitation mm, wind mph, pressure hPa. Current conditions are model estimates, not a local weather station observation. Four forecast points are the first future hour followed by points at least three hours apart. Hourly precipitation probability refers to the respective hour, not the full three-hour gap.
+Layout `automatic` chooses detailed when precipitation is greater than zero, gusts are at least 25 mph, or WMO weather code is 45 or greater; otherwise minimal. Explicit minimal/detailed overrides this rule. Detailed displays humidity, rainfall, wind and gusts; sea-level pressure is still fetched and validated but omitted from the card to give the forecast more space. Main temperature and feels-like use Celsius, precipitation mm, wind mph, pressure hPa. Current conditions are model estimates, not a local weather station observation. Four forecast points are the first future hour followed by points at least three hours apart. Hourly precipitation probability refers to the respective hour, not the full three-hour gap.
 
-Themes: sunny, partly-cloudy, overcast, rain, heavy-rain, thunderstorm, snow, fog, clear-night, cloudy-night. At night clear codes 0/1 select clear-night; all other conditions select cloudy-night, while the textual description preserves the actual condition. For cached current data the backdrop uses today's solar timestamps and actual current time. Forecast icons use each future hour's day/night flag. Dates are English; times use 24 hours and ZoneInfo handles BST/GMT. Forecast rows show timezone abbreviations to distinguish repeated autumn hours. No global OS timezone or locale changes are required.
+Themes: sunny, partly-cloudy, overcast, rain, heavy-rain, thunderstorm, snow, fog, clear-night, cloudy-night. At night clear codes 0/1 select clear-night; all other conditions select cloudy-night, while the textual description preserves the actual condition. For cached current data the backdrop uses today's solar timestamps and actual current time. Forecast icons use each future hour's day/night flag. Dates are English; times use 24 hours and ZoneInfo handles BST/GMT. Forecast rows show timezone abbreviations only for ambiguous autumn hours; ordinary times use just HH:MM. No global OS timezone or locale changes are required.
 
 ## Offline design
 
@@ -108,13 +132,15 @@ Code and original programmatic icons/artwork: MIT, see LICENSE. No proprietary a
 
 ## Development
 
-Architecture: `config.py` validates settings/windows; `client.py` handles bounded HTTP requests; `weather.py` validates and interprets data; `storage.py` provides cache/atomic publication; `render.py` draws static cards; `service.py` handles generation, locks and scheduling; `cli.py` exposes operations. Tests use deterministic synthetic fixtures and mocked HTTP; no Pi or live API is required.
+Architecture: `config.py` validates settings/windows; `client.py` handles bounded HTTP requests; `weather.py` validates and interprets data; `storage.py` provides cache/atomic publication; `render.py` draws static cards; `service.py` handles generation, locks and scheduling; `cli.py` exposes operations. Tests use deterministic synthetic fixtures and mocked HTTP; no Pi or live API is required. Renderer checks measure actual text ink and icon bounds to detect clipping, column overflow and overlap across both fonts/layouts, every theme, extreme values, missing forecasts and DST labels. To check another installed font, set `WEATHER_CARD_TEST_FONT=/absolute/path/to/font.ttf` when running pytest.
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m pytest -q
 .venv/bin/python tools/gallery.py
+# Optional: match a particular installed font for comparisons and measurements
+.venv/bin/python tools/gallery.py --font /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
 ```
 
 ## Troubleshooting, updating and removal
