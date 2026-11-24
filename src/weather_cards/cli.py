@@ -24,6 +24,7 @@ def main(argv=None):
     v.add_argument("--theme", choices=PALETTES, default="rain")
     v.add_argument("--layout", choices=("minimal", "detailed"), default="minimal")
     v.add_argument("--output", default="preview.png")
+    v.add_argument("--time-format", choices=("12h", "24h"), default="24h")
     for cmd in ("queue", "status", "validate-config", "tick"):
         sub.add_parser(cmd)
     args = p.parse_args(argv)
@@ -33,7 +34,7 @@ def main(argv=None):
     now = datetime.now(UTC)
     try:
         if args.command == "preview":
-            cfg = Config(layout=args.layout)
+            cfg = Config(layout=args.layout, time_format=args.time_format)
             data = sample(now, args.theme)
             obj = dict(
                 data=data,

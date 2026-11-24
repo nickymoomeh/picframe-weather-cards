@@ -12,6 +12,7 @@ class Config:
     latitude: float = 51.080
     longitude: float = 1.085
     timezone: str = "Europe/London"
+    time_format: str = "24h"
     layout: str = "automatic"
     output: str = "/home/pi4/FrameCards/weather.png"
     state_dir: str = "~/.local/state/weather-card"
@@ -44,6 +45,8 @@ class Config:
         if not -90 <= self.latitude <= 90 or not -180 <= self.longitude <= 180:
             raise ValueError("Coordinates")
         ZoneInfo(self.timezone)
+        if self.time_format not in ("12h", "24h"):
+            raise ValueError("time_format must be 12h or 24h")
         if self.layout not in ("minimal", "detailed", "automatic"):
             raise ValueError("layout")
         if not 1 <= self.duration <= 3600:

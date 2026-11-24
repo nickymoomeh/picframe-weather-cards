@@ -105,7 +105,17 @@ def icon(draw, x, y, s, kind, accent):
                 )
 
 
-def forecast_time_label(timestamp, timezone):
+def format_time(local, time_format="24h"):
+    """Format local display time without locale-dependent am/pm or leading zeros."""
+    if time_format == "12h":
+        hour = local.hour % 12 or 12
+        minutes = f":{local.minute:02d}" if local.minute else ""
+        suffix = "am" if local.hour < 12 else "pm"
+        return f"{hour}{minutes}{suffix}"
+    return local.strftime("%H:%M")
+
+
+def forecast_time_label(timestamp, timezone, time_format="24h"):
     """Only suffix an ambiguous autumn wall-clock hour; selection stays unchanged."""
     local = datetime.fromtimestamp(timestamp, timezone)
     wall = local.replace(tzinfo=None)
@@ -114,7 +124,8 @@ def forecast_time_label(timestamp, timezone):
         wall.replace(tzinfo=timezone, fold=1),
     )
     ambiguous = first.utcoffset() != second.utcoffset()
-    return local.strftime("%H:%M %Z" if ambiguous else "%H:%M")
+    label = format_time(local, time_format)
+    return f"{label} {local.tzname()}" if ambiguous else label
 
 
 def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
@@ -227,7 +238,14 @@ def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
         width=1360,
         role="date",
     )
-    text(1540, 70, f"{local:%H:%M}", 66, width=250, role="clock")
+    text(
+        1480 if cfg.time_format == "12h" else 1540,
+        70,
+        format_time(local, cfg.time_format),
+        66,
+        width=310 if cfg.time_format == "12h" else 250,
+        role="clock",
+    )
     warn = offline or age > cfg.stale_minutes or not usable
     if warn:
         d.ellipse((1812, 76, 1848, 112), fill="#ff525f")
@@ -289,7 +307,7 @@ def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
                 text(
                     1280,
                     580,
-                    f"{label.title()}  {datetime.fromtimestamp(t, tz):%H:%M}",
+                    f"{label.title()}  {format_time(datetime.fromtimestamp(t, tz), cfg.time_format)}",
                     44,
                     width=540,
                     role="solar",
@@ -323,7 +341,7 @@ def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
             text(
                 center,
                 755 if mode == "detailed" else 700,
-                forecast_time_label(period["time"], tz),
+                forecast_time_label(period["time"], tz, cfg.time_format),
                 72,
                 width=410,
                 center=True,
@@ -399,7 +417,7 @@ def render(cfg, obj, now, offline=False, forced_theme=None, *, audit=None):
             if age > cfg.fresh_minutes
             else "Updated"
         )
-        status = f"{prefix} {updated:%d %b %H:%M %Z}"
+        status = f"{prefix} {updated:%d %b} {format_time(updated, cfg.time_format)} {updated:%Z}"
     else:
         status = "Offline — awaiting first forecast"
     text(100, 1146, status, 44, "#e6edf3", width=1250, role="status")

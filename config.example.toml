@@ -3,6 +3,8 @@ location = "Saltwood, Kent"
 latitude = 51.080
 longitude = 1.085
 timezone = "Europe/London"
+# Display only: 12h shows 3pm / 3:05pm. Queue windows below always use HH:MM.
+time_format = "24h"
 layout = "automatic"
 output = "/home/pi4/FrameCards/weather.png"
 state_dir = "~/.local/state/weather-card"

@@ -87,6 +87,7 @@ See the commented [sample TOML](config.example.toml). All keys are optional and 
 .venv/bin/weather-card --config ~/.config/weather-card/config.toml generate
 .venv/bin/weather-card generate --offline
 .venv/bin/weather-card preview --theme clear-night --output night.png
+.venv/bin/weather-card preview --theme sunny --time-format 12h --output twelve-hour.png
 .venv/bin/weather-card preview --theme snow --layout detailed --output snow.png
 .venv/bin/weather-card queue
 .venv/bin/weather-card status
@@ -98,7 +99,7 @@ See the commented [sample TOML](config.example.toml). All keys are optional and 
 
 Layout `automatic` chooses detailed when precipitation is greater than zero, gusts are at least 25 mph, or WMO weather code is 45 or greater; otherwise minimal. Explicit minimal/detailed overrides this rule. Detailed displays humidity, rainfall, wind and gusts; sea-level pressure is still fetched and validated but omitted from the card to give the forecast more space. Main temperature and feels-like use Celsius, precipitation mm, wind mph, pressure hPa. Current conditions are model estimates, not a local weather station observation. Four forecast points are the first future hour followed by points at least three hours apart. Hourly precipitation probability refers to the respective hour, not the full three-hour gap.
 
-Themes: sunny, partly-cloudy, overcast, rain, heavy-rain, thunderstorm, snow, fog, clear-night, cloudy-night. At night clear codes 0/1 select clear-night; all other conditions select cloudy-night, while the textual description preserves the actual condition. For cached current data the backdrop uses today's solar timestamps and actual current time. Forecast icons use each future hour's day/night flag. Dates are English; times use 24 hours and ZoneInfo handles BST/GMT. Forecast rows show timezone abbreviations only for ambiguous autumn hours; ordinary times use just HH:MM. No global OS timezone or locale changes are required.
+Themes: sunny, partly-cloudy, overcast, rain, heavy-rain, thunderstorm, snow, fog, clear-night, cloudy-night. At night clear codes 0/1 select clear-night; all other conditions select cloudy-night, while the textual description preserves the actual condition. For cached current data the backdrop uses today's solar timestamps and actual current time. Forecast icons use each future hour's day/night flag. Dates are English; times default to 24 hours and ZoneInfo handles BST/GMT. Set `time_format = "12h"` in your TOML configuration for `3pm`, `3:05pm`, `12am` and `12pm` on the main clock, forecast, sunrise/sunset and update timestamp. This changes presentation only; `window_start` and `window_end` must still use 24-hour `HH:MM`. Existing configurations retain 24-hour display. Forecast rows show timezone abbreviations only for ambiguous autumn hours; ordinary times use just HH:MM. No global OS timezone or locale changes are required.
 
 ## Offline design
 

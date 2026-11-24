@@ -199,3 +199,73 @@ def test_snow_uses_precipitation_label():
     render(Config(), obj, now, audit=audit)
     labels = [a["text"] for a in audit if a["role"].endswith("-precipitation")]
     assert labels and all(value.startswith("Precip ") for value in labels)
+
+
+@pytest.mark.parametrize(
+    "hour,minute,expected",
+    [
+        (0, 0, "12am"),
+        (0, 5, "12:05am"),
+        (9, 0, "9am"),
+        (12, 0, "12pm"),
+        (12, 59, "12:59pm"),
+        (15, 0, "3pm"),
+        (15, 5, "3:05pm"),
+        (23, 59, "11:59pm"),
+    ],
+)
+def test_twelve_hour_format(hour, minute, expected):
+    from weather_cards.render import format_time
+
+    assert format_time(datetime(2026, 11, 24, hour, minute), "12h") == expected
+
+
+@pytest.mark.parametrize("font", fonts())
+@pytest.mark.parametrize("mode", ["minimal", "detailed"])
+@pytest.mark.parametrize("kind", PALETTES)
+def test_twelve_hour_card_geometry(font, mode, kind):
+    now = datetime(2026, 11, 24, 12, 59, tzinfo=UTC)
+    data = sample(now, kind)
+    obj = dict(
+        data=data, retrieved=now.timestamp(), valid_until=data["hourly"]["time"][-1]
+    )
+    audit = []
+    render(
+        Config(font=font, layout=mode, time_format="12h"),
+        obj,
+        now,
+        offline=True,
+        forced_theme=kind,
+        audit=audit,
+    )
+    assert_geometry(audit)
+    assert next(a["text"] for a in audit if a["role"] == "clock") == "12:59pm"
+    assert next(a["text"] for a in audit if a["role"] == "solar") == "Sunset  5pm"
+    assert next(a["text"] for a in audit if a["role"] == "forecast-0-time") == "1pm"
+    assert (
+        next(a["text"] for a in audit if a["role"] == "status")
+        == "Offline — last updated 24 Nov 12:59pm GMT"
+    )
+
+
+def test_twelve_hour_dst_labels():
+    tz = ZoneInfo("Europe/London")
+    for hour, suffix in [(0, "BST"), (1, "GMT")]:
+        instant = datetime(2026, 10, 25, hour, tzinfo=UTC)
+        assert forecast_time_label(instant.timestamp(), tz, "12h") == f"1am {suffix}"
+    assert (
+        forecast_time_label(datetime(2026, 7, 1, 14, tzinfo=UTC).timestamp(), tz, "12h")
+        == "3pm"
+    )
+
+
+def test_time_format_config_compatibility(tmp_path):
+    from weather_cards.config import load
+
+    assert Config().time_format == "24h"
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('time_format = "12h"\nqueue_minutes = 3\n')
+    assert load(cfg).time_format == "12h"
+    assert load(cfg).queue_minutes == 3
+    with pytest.raises(ValueError, match="time_format"):
+        Config(time_format="invalid").validate()
